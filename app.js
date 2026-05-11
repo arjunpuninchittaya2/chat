@@ -1,7 +1,8 @@
 import express from 'express';
 
 const DEFAULT_BASE_URL = 'https://ai.hackclub.com/proxy/v1';
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-latest';
+const DEFAULT_MODEL = '~anthropic/claude-sonnet-latest';
+const HACK_CLUB_SEARCH_BASE_URL = 'https://search.hackclub.com';
 const ALLOWED_BASE_HOSTS = new Set(['ai.hackclub.com', 'openrouter.ai', 'localhost', '127.0.0.1']);
 
 function trimTrailingSlashes(value) {
@@ -34,25 +35,28 @@ function normalizeBaseUrl(baseUrl) {
   return trimTrailingSlashes(parsed.toString());
 }
 
-async function tryWebSearch(fetchImpl, baseUrl, apiKey, messages) {
+function getLatestUserText(messages) {
   const latestUser = [...messages].reverse().find((msg) => msg?.role === 'user');
-  const latestText = typeof latestUser?.content === 'string'
+  return typeof latestUser?.content === 'string'
     ? latestUser.content
     : Array.isArray(latestUser?.content)
       ? latestUser.content.filter((part) => part?.type === 'text').map((part) => part.text).join('\n')
       : '';
+}
 
-  if (!latestText?.trim()) {
+async function tryWebSearch(fetchImpl, apiKey, messages) {
+  const latestText = getLatestUserText(messages);
+
+  if (!latestText?.trim() || !apiKey) {
     return null;
   }
 
-  const response = await fetchImpl(`${baseUrl}/exa/search`, {
-    method: 'POST',
+  const params = new URLSearchParams({ q: latestText.trim(), count: '5' });
+  const response = await fetchImpl(`${HACK_CLUB_SEARCH_BASE_URL}/res/v1/web/search?${params}`, {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
-      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ query: latestText, numResults: 5 }),
   });
 
   if (!response.ok) {
@@ -60,14 +64,14 @@ async function tryWebSearch(fetchImpl, baseUrl, apiKey, messages) {
   }
 
   const body = await response.json();
-  const results = body?.results ?? body?.web?.results ?? [];
+  const results = body?.web?.results ?? body?.results ?? [];
   if (!Array.isArray(results) || results.length === 0) {
     return null;
   }
 
   return [
-    'Live web search context (cite these URLs when relevant):',
-    ...results.slice(0, 5).map((item, index) => `${index + 1}. ${item?.title || 'Untitled'}\nURL: ${item?.url || 'N/A'}\nSummary: ${item?.text || item?.description || 'No summary provided'}`),
+    'Live web search context from Hack Club Search (cite these URLs when relevant):',
+    ...results.slice(0, 5).map((item, index) => `${index + 1}. ${item?.title || 'Untitled'}\nURL: ${item?.url || 'N/A'}\nSummary: ${item?.description || item?.text || 'No summary provided'}`),
   ].join('\n\n');
 }
 
@@ -102,6 +106,7 @@ function createApp({ fetchImpl = fetch } = {}) {
       const {
         baseUrl: baseUrlInput,
         apiKey,
+        searchApiKey,
         model = DEFAULT_MODEL,
         messages = [],
         temperature,
@@ -118,7 +123,7 @@ function createApp({ fetchImpl = fetch } = {}) {
       const outgoingMessages = [...messages];
 
       if (enableWebSearch) {
-        const webContext = await tryWebSearch(fetchImpl, baseUrl, apiKey, outgoingMessages);
+        const webContext = await tryWebSearch(fetchImpl, searchApiKey || apiKey, outgoingMessages);
         if (webContext) {
           outgoingMessages.unshift({ role: 'system', content: webContext });
         }

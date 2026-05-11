@@ -9,60 +9,83 @@
   <body>
     <div class="app">
       <aside id="sidebar" class="sidebar">
-        <div class="sidebar-header">
-          <h1>Chats</h1>
-          <button id="newChatBtn" class="icon-btn new-chat-btn" title="New chat">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-          </button>
+        <div class="sidebar-top">
+          <div class="sidebar-brand-row">
+            <div class="brand-dot" aria-hidden="true"></div>
+            <button id="toggleSidebarBtn" class="icon-btn" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
+          </div>
+
+          <button id="newChatBtn" class="nav-btn primary">＋ <span>New chat</span></button>
+          <button class="nav-btn">⌕ <span>Search chats</span></button>
+
+          <nav class="utility-nav">
+            <button class="nav-btn">⌁ <span>Projects</span></button>
+            <button class="nav-btn">⌬ <span>Codex</span></button>
+            <button id="settingsBtn" class="nav-btn">⋯ <span>More</span></button>
+          </nav>
         </div>
-        <div id="conversationList" class="conversation-list"></div>
-        <div class="sidebar-footer">
-          <button id="settingsBtn" class="secondary">⚙️ Settings</button>
+
+        <section class="sidebar-section gpts-section">
+          <h2>GPTs</h2>
+          <button class="gpt-item"><span class="avatar">🤖</span><span>AI Humanizer</span></button>
+          <button class="gpt-item"><span class="avatar">📎</span><span>Citation and Reference Finder</span></button>
+          <button class="gpt-item"><span class="avatar">⚙️</span><span>Explore GPTs</span></button>
+        </section>
+
+        <section class="sidebar-section recents-section">
+          <h2>Recents</h2>
+          <div id="conversationList" class="conversation-list"></div>
+        </section>
+
+        <div class="sidebar-profile">
+          <div class="profile-main">
+            <div class="profile-avatar">AP</div>
+            <div>
+              <p class="profile-name">Arjun Puninchitt...</p>
+              <p class="profile-plan">Free</p>
+            </div>
+          </div>
+          <button class="upgrade-btn">Upgrade</button>
         </div>
       </aside>
 
       <main class="chat-main">
         <header class="chat-header">
-          <button id="toggleSidebarBtn" class="icon-btn sidebar-toggle" title="Toggle sidebar">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="3" y1="6" x2="21" y2="6"></line>
-              <line x1="3" y1="12" x2="21" y2="12"></line>
-              <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-          </button>
-          <div class="header-controls">
-            <select id="modelSelect" class="model-select"></select>
-            <label class="checkbox-inline"><input id="webSearchToggle" type="checkbox" /> Web Search</label>
+          <div class="header-left">
+            <label for="modelSelect" class="model-label">ChatGPT</label>
+            <select id="modelSelect" class="model-select" aria-label="Model"></select>
+          </div>
+          <div class="header-actions">
+            <button class="header-btn">✦ Get Plus</button>
+            <button class="header-btn">⇪ Share</button>
+            <button class="header-btn icon-only">⋯</button>
           </div>
         </header>
 
         <section id="messages" class="messages"></section>
+        <button id="scrollBottomBtn" class="scroll-bottom-btn" aria-label="Scroll to bottom">↓</button>
+
+        <div id="draftPreview" class="draft-preview" hidden>
+          <p id="draftPreviewText"></p>
+        </div>
 
         <div class="composer-container">
           <form id="composer" class="composer">
-            <div class="attachments-display" id="attachmentPreview"></div>
+            <div id="attachmentPreview" class="attachments-display"></div>
             <div class="composer-input-wrapper">
-              <textarea id="promptInput" placeholder="Ask anything..." required></textarea>
-              <div class="composer-actions">
-                <label class="file-input-label" title="Add attachment">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="1"></circle>
-                    <path d="M12 2v6M12 16v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M2 12h6M16 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"></path>
-                  </svg>
-                  <input id="fileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.doc,.docx" />
-                </label>
-                <button type="submit" class="send-button" title="Send message" aria-label="Send">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                    <path d="M16.6915026,12.4744748 L3.50612381,13.2599618 C3.19218622,13.2599618 3.03521743,13.4170592 3.03521743,13.5741566 L1.15159189,20.0151496 C0.8376543,20.8006365 0.99,21.89 1.77946707,22.52 C2.41,22.99 3.50612381,23.1 4.13399899,22.8429026 L21.714504,14.0454487 C22.6563168,13.5741566 23.1272231,12.6315722 22.9702544,11.6889879 L4.13399899,1.16346273 C3.34915502,0.9 2.40734225,0.9 1.77946707,1.4429026 C0.994623095,2.10604706 0.837654326,3.0486314 1.15159189,3.99998774 L3.03521743,10.4409809 C3.03521743,10.5980783 3.34915502,10.7551757 3.50612381,10.7551757 L16.6915026,11.5406625 C16.6915026,11.5406625 17.1624089,11.5406625 17.1624089,12.0115688 C17.1624089,12.4744748 16.6915026,12.4744748 16.6915026,12.4744748 Z"></path>
-                  </svg>
-                </button>
+              <label class="file-input-label" title="Add attachment" aria-label="Add attachment">
+                ＋
+                <input id="fileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.doc,.docx" />
+              </label>
+              <textarea id="promptInput" placeholder="Ask anything" required></textarea>
+              <div class="composer-right-actions">
+                <button type="button" class="icon-btn" title="Voice input" aria-label="Voice input">🎙</button>
+                <button type="button" class="icon-btn" title="Voice mode" aria-label="Voice mode">◉</button>
+                <button type="submit" class="send-button" aria-label="Send">↑</button>
               </div>
             </div>
           </form>
-          <p class="footer-text">AI can make mistakes. Check important information.</p>
+          <p class="footer-text">ChatGPT can make mistakes. Check important info. See <a href="#" rel="noreferrer">Your privacy choices</a>.</p>
         </div>
       </main>
     </div>
@@ -72,6 +95,8 @@
         <h2>Settings</h2>
         <label>API Base URL <input id="baseUrlInput" type="url" placeholder="https://ai.hackclub.com/proxy/v1" required /></label>
         <label>API Key <input id="apiKeyInput" type="password" placeholder="sk-..." /></label>
+        <label>Search API Key <input id="searchApiKeyInput" type="password" placeholder="sk-hc-v1-..." /></label>
+        <label class="checkbox-inline"><input id="webSearchToggle" type="checkbox" /> Enable Web Search</label>
         <label class="checkbox-inline"><input id="darkModeToggle" type="checkbox" /> Dark mode</label>
         <label class="checkbox-inline"><input id="reasoningToggle" type="checkbox" /> Show reasoning blocks</label>
         <div class="dialog-actions">

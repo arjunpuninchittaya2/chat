@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'chat-app-state-v1';
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-latest';
+const DEFAULT_MODEL = '~anthropic/claude-sonnet-latest';
 const DEFAULT_BASE_URL = 'https://ai.hackclub.com/proxy/v1';
 const MAX_CONVERSATION_TITLE_LENGTH = 40;
 const BYTES_PER_KB = 1024;
@@ -13,7 +13,6 @@ const elements = {
   fileInput: document.getElementById('fileInput'),
   attachmentPreview: document.getElementById('attachmentPreview'),
   modelSelect: document.getElementById('modelSelect'),
-  webSearchToggle: document.getElementById('webSearchToggle'),
   newChatBtn: document.getElementById('newChatBtn'),
   toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
   settingsBtn: document.getElementById('settingsBtn'),
@@ -21,19 +20,25 @@ const elements = {
   settingsForm: document.getElementById('settingsForm'),
   baseUrlInput: document.getElementById('baseUrlInput'),
   apiKeyInput: document.getElementById('apiKeyInput'),
+  searchApiKeyInput: document.getElementById('searchApiKeyInput'),
+  webSearchToggle: document.getElementById('webSearchToggle'),
   darkModeToggle: document.getElementById('darkModeToggle'),
   reasoningToggle: document.getElementById('reasoningToggle'),
+  scrollBottomBtn: document.getElementById('scrollBottomBtn'),
+  draftPreview: document.getElementById('draftPreview'),
+  draftPreviewText: document.getElementById('draftPreviewText'),
 };
 
 const state = loadState();
 let pendingAttachments = [];
 
-applyTheme();
 hydrateSettings();
 ensureConversation();
 renderConversationList();
 renderMessages();
 loadModels();
+autoResizeInput();
+updateDraftPreview();
 
 elements.newChatBtn.addEventListener('click', () => {
   const conversation = createConversation();
@@ -56,6 +61,8 @@ elements.settingsForm.addEventListener('submit', (event) => {
   event.preventDefault();
   state.settings.baseUrl = elements.baseUrlInput.value.trim() || DEFAULT_BASE_URL;
   state.settings.apiKey = elements.apiKeyInput.value.trim();
+  state.settings.searchApiKey = elements.searchApiKeyInput.value.trim();
+  state.settings.enableWebSearch = elements.webSearchToggle.checked;
   state.settings.darkMode = elements.darkModeToggle.checked;
   state.settings.showReasoning = elements.reasoningToggle.checked;
   applyTheme();
@@ -68,6 +75,22 @@ elements.settingsForm.addEventListener('submit', (event) => {
 elements.fileInput.addEventListener('change', async () => {
   pendingAttachments = await Promise.all([...elements.fileInput.files].map(toAttachment));
   renderAttachmentPreview();
+});
+
+elements.modelSelect.addEventListener('change', () => {
+  state.settings.selectedModel = elements.modelSelect.value || DEFAULT_MODEL;
+  saveState();
+});
+
+elements.promptInput.addEventListener('input', () => {
+  autoResizeInput();
+  updateDraftPreview();
+});
+
+elements.messages.addEventListener('scroll', updateScrollButton);
+
+elements.scrollBottomBtn.addEventListener('click', () => {
+  elements.messages.scrollTo({ top: elements.messages.scrollHeight, behavior: 'smooth' });
 });
 
 elements.composer.addEventListener('submit', async (event) => {
@@ -94,7 +117,10 @@ elements.composer.addEventListener('submit', async (event) => {
   elements.fileInput.value = '';
   pendingAttachments = [];
   renderAttachmentPreview();
-  updateConversationTitle(conversation, contentText || pendingAttachments[0]?.name || 'New chat');
+  autoResizeInput();
+  updateDraftPreview();
+
+  updateConversationTitle(conversation, contentText || userMessage.attachments[0]?.name || 'New chat');
   saveState();
   renderConversationList();
   renderMessages();
@@ -117,7 +143,10 @@ function loadState() {
       activeConversationId: parsed.activeConversationId || null,
       settings: {
         baseUrl: parsed.settings?.baseUrl || DEFAULT_BASE_URL,
-        apiKey: '',
+        apiKey: parsed.settings?.apiKey || '',
+        searchApiKey: parsed.settings?.searchApiKey || '',
+        selectedModel: parsed.settings?.selectedModel || DEFAULT_MODEL,
+        enableWebSearch: parsed.settings?.enableWebSearch ?? true,
         darkMode: parsed.settings?.darkMode ?? true,
         showReasoning: parsed.settings?.showReasoning ?? false,
       },
@@ -126,29 +155,52 @@ function loadState() {
     return {
       conversations: [],
       activeConversationId: null,
-      settings: { baseUrl: DEFAULT_BASE_URL, apiKey: '', darkMode: true, showReasoning: false },
+      settings: {
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: '',
+        searchApiKey: '',
+        selectedModel: DEFAULT_MODEL,
+        enableWebSearch: true,
+        darkMode: true,
+        showReasoning: false,
+      },
     };
   }
 }
 
 function saveState() {
-  const { apiKey, ...safeSettings } = state.settings;
-  void apiKey;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    ...state,
-    settings: safeSettings,
-  }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function hydrateSettings() {
   elements.baseUrlInput.value = state.settings.baseUrl;
   elements.apiKeyInput.value = state.settings.apiKey;
+  elements.searchApiKeyInput.value = state.settings.searchApiKey;
+  elements.webSearchToggle.checked = state.settings.enableWebSearch;
   elements.darkModeToggle.checked = state.settings.darkMode;
   elements.reasoningToggle.checked = state.settings.showReasoning;
+  applyTheme();
 }
 
 function applyTheme() {
   document.documentElement.classList.toggle('light', !state.settings.darkMode);
+}
+
+function autoResizeInput() {
+  elements.promptInput.style.height = '42px';
+  elements.promptInput.style.height = `${Math.min(elements.promptInput.scrollHeight, 180)}px`;
+}
+
+function updateDraftPreview() {
+  const value = elements.promptInput.value.trim();
+  if (!value) {
+    elements.draftPreview.hidden = true;
+    elements.draftPreviewText.textContent = '';
+    return;
+  }
+
+  elements.draftPreview.hidden = false;
+  elements.draftPreviewText.textContent = value;
 }
 
 function createConversation() {
@@ -166,6 +218,7 @@ function ensureConversation() {
   if (!state.conversations.length) {
     const conversation = createConversation();
     state.activeConversationId = conversation.id;
+    saveState();
   }
 
   if (!state.conversations.some((chat) => chat.id === state.activeConversationId)) {
@@ -183,7 +236,9 @@ function renderConversationList() {
   state.conversations.forEach((chat) => {
     const button = document.createElement('button');
     button.className = `conversation-item ${chat.id === state.activeConversationId ? 'active' : ''}`;
-    button.textContent = chat.title;
+    const text = document.createElement('span');
+    text.textContent = chat.title;
+    button.appendChild(text);
     button.addEventListener('click', () => {
       state.activeConversationId = chat.id;
       saveState();
@@ -207,17 +262,13 @@ function renderMessages() {
 
     const text = document.createElement('div');
     text.className = 'message-text';
-    text.textContent = typeof message.content === 'string'
-      ? message.content
-      : message.content?.find?.((part) => part?.type === 'text')?.text || '';
+    text.textContent = getMessageText(message);
     messageContent.appendChild(text);
 
     const attachments = Array.isArray(message.attachments) ? message.attachments : [];
     attachments.filter((file) => file.type.startsWith('image/')).forEach((image) => {
       const safeImageUrl = sanitizeImageUrl(image.dataUrl);
-      if (!safeImageUrl) {
-        return;
-      }
+      if (!safeImageUrl) return;
       const img = document.createElement('img');
       img.src = safeImageUrl;
       img.alt = image.name;
@@ -227,9 +278,7 @@ function renderMessages() {
     if (Array.isArray(message.images)) {
       message.images.forEach((imageDataUrl) => {
         const safeImageUrl = sanitizeImageUrl(imageDataUrl);
-        if (!safeImageUrl) {
-          return;
-        }
+        if (!safeImageUrl) return;
         const img = document.createElement('img');
         img.src = safeImageUrl;
         img.alt = 'Generated image';
@@ -240,7 +289,6 @@ function renderMessages() {
     if (message.reasoning && state.settings.showReasoning) {
       const reasoning = document.createElement('details');
       reasoning.className = 'reasoning';
-      reasoning.open = false;
       const summary = document.createElement('summary');
       summary.textContent = 'Reasoning';
       const pre = document.createElement('pre');
@@ -249,11 +297,98 @@ function renderMessages() {
       messageContent.appendChild(reasoning);
     }
 
+    if (message.role === 'assistant' && (message.content || (message.images && message.images.length))) {
+      messageContent.appendChild(buildAssistantActions(message));
+    }
+
     article.appendChild(messageContent);
     elements.messages.appendChild(article);
   });
 
   elements.messages.scrollTop = elements.messages.scrollHeight;
+  updateScrollButton();
+}
+
+function buildAssistantActions(message) {
+  const row = document.createElement('div');
+  row.className = 'assistant-actions';
+
+  const copy = document.createElement('button');
+  copy.textContent = '⧉';
+  copy.title = 'Copy';
+  copy.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(getMessageText(message));
+  });
+
+  const like = document.createElement('button');
+  like.textContent = '👍';
+  like.title = 'Like';
+  like.addEventListener('click', () => {
+    like.classList.toggle('active');
+    dislike.classList.remove('active');
+  });
+
+  const dislike = document.createElement('button');
+  dislike.textContent = '👎';
+  dislike.title = 'Dislike';
+  dislike.addEventListener('click', () => {
+    dislike.classList.toggle('active');
+    like.classList.remove('active');
+  });
+
+  const regenerate = document.createElement('button');
+  regenerate.textContent = '↻';
+  regenerate.title = 'Regenerate';
+  regenerate.addEventListener('click', () => regenerateMessage(message.id));
+
+  const sources = document.createElement('button');
+  sources.textContent = 'Sources';
+  sources.title = 'Sources';
+  sources.className = 'sources-pill';
+  sources.addEventListener('click', () => {
+    if (!state.settings.enableWebSearch) {
+      alert('Web search is disabled in Settings.');
+      return;
+    }
+    alert('If web search results are used, sources are injected into the assistant context.');
+  });
+
+  row.append(copy, like, dislike, regenerate, sources);
+  return row;
+}
+
+async function regenerateMessage(messageId) {
+  const conversation = getActiveConversation();
+  const index = conversation.messages.findIndex((item) => item.id === messageId);
+  if (index < 1 || conversation.messages[index].role !== 'assistant') {
+    return;
+  }
+
+  conversation.messages = conversation.messages.slice(0, index);
+  const assistantMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', reasoning: '', images: [] };
+  conversation.messages.push(assistantMessage);
+  renderMessages();
+
+  try {
+    await streamAssistantResponse(conversation, assistantMessage);
+  } catch (error) {
+    assistantMessage.content += `\n\n[Error] ${error.message}`;
+  }
+
+  saveState();
+  renderMessages();
+}
+
+function updateScrollButton() {
+  const threshold = 120;
+  const hidden = elements.messages.scrollHeight - elements.messages.scrollTop - elements.messages.clientHeight < threshold;
+  elements.scrollBottomBtn.classList.toggle('visible', !hidden);
+}
+
+function getMessageText(message) {
+  return typeof message.content === 'string'
+    ? message.content
+    : message.content?.find?.((part) => part?.type === 'text')?.text || '';
 }
 
 function renderAttachmentPreview() {
@@ -261,11 +396,11 @@ function renderAttachmentPreview() {
   pendingAttachments.forEach((file, index) => {
     const chip = document.createElement('div');
     chip.className = 'attachment-chip';
-    
+
     const nameSpan = document.createElement('span');
     nameSpan.textContent = `${file.name} (${Math.ceil(file.size / BYTES_PER_KB)}KB)`;
     chip.appendChild(nameSpan);
-    
+
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.textContent = '✕';
@@ -275,7 +410,7 @@ function renderAttachmentPreview() {
       renderAttachmentPreview();
     });
     chip.appendChild(closeBtn);
-    
+
     elements.attachmentPreview.appendChild(chip);
   });
 }
@@ -371,26 +506,33 @@ async function loadModels() {
     if (![...elements.modelSelect.options].some((option) => option.value === defaultOption)) {
       const option = document.createElement('option');
       option.value = defaultOption;
-      option.textContent = `${defaultOption} (default)`;
+      option.textContent = defaultOption;
       elements.modelSelect.prepend(option);
     }
 
-    elements.modelSelect.value = defaultOption;
+    const selectedModel = state.settings.selectedModel || defaultOption;
+    elements.modelSelect.value = [...elements.modelSelect.options].some((option) => option.value === selectedModel)
+      ? selectedModel
+      : defaultOption;
   } catch {
     const option = document.createElement('option');
     option.value = DEFAULT_MODEL;
-    option.textContent = `${DEFAULT_MODEL} (fallback)`;
+    option.textContent = DEFAULT_MODEL;
     elements.modelSelect.appendChild(option);
     elements.modelSelect.value = DEFAULT_MODEL;
   }
+
+  state.settings.selectedModel = elements.modelSelect.value || DEFAULT_MODEL;
+  saveState();
 }
 
 async function streamAssistantResponse(conversation, assistantMessage) {
   const payload = {
     baseUrl: state.settings.baseUrl,
     apiKey: state.settings.apiKey,
+    searchApiKey: state.settings.searchApiKey,
     model: elements.modelSelect.value || DEFAULT_MODEL,
-    enableWebSearch: elements.webSearchToggle.checked,
+    enableWebSearch: state.settings.enableWebSearch,
     messages: conversation.messages
       .filter((message) => message.id !== assistantMessage.id)
       .map(({ role, content }) => ({ role, content })),
