@@ -110,7 +110,7 @@ elements.composer.addEventListener('submit', async (event) => {
   };
 
   conversation.messages.push(userMessage);
-  const assistantMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', reasoning: '', images: [] };
+  const assistantMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', reasoning: '', images: [], sources: [] };
   conversation.messages.push(assistantMessage);
 
   elements.promptInput.value = '';
@@ -126,6 +126,9 @@ elements.composer.addEventListener('submit', async (event) => {
   renderMessages();
 
   try {
+    if (state.settings.enableWebSearch) {
+      assistantMessage.sources = await fetchWebSources(contentText || getMessageText(userMessage));
+    }
     await streamAssistantResponse(conversation, assistantMessage);
   } catch (error) {
     assistantMessage.content += `\n\n[Error] ${error.message}`;
@@ -345,12 +348,14 @@ function buildAssistantActions(message) {
   sources.textContent = 'Sources';
   sources.title = 'Sources';
   sources.className = 'sources-pill';
+  if (!Array.isArray(message.sources) || message.sources.length === 0) {
+    sources.disabled = true;
+  }
   sources.addEventListener('click', () => {
-    if (!state.settings.enableWebSearch) {
-      alert('Web search is disabled in Settings.');
-      return;
-    }
-    alert('If web search results are used, sources are injected into the assistant context.');
+    const lines = (Array.isArray(message.sources) ? message.sources : [])
+      .map((item, index) => `${index + 1}. ${item.title || 'Untitled'}\n${item.url || ''}`)
+      .join('\n\n');
+    alert(lines || 'No sources available for this response.');
   });
 
   row.append(copy, like, dislike, regenerate, sources);
@@ -365,11 +370,15 @@ async function regenerateMessage(messageId) {
   }
 
   conversation.messages = conversation.messages.slice(0, index);
-  const assistantMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', reasoning: '', images: [] };
+  const assistantMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', reasoning: '', images: [], sources: [] };
   conversation.messages.push(assistantMessage);
   renderMessages();
 
   try {
+    const previousUser = [...conversation.messages].reverse().find((msg) => msg.role === 'user');
+    if (state.settings.enableWebSearch && previousUser) {
+      assistantMessage.sources = await fetchWebSources(getMessageText(previousUser));
+    }
     await streamAssistantResponse(conversation, assistantMessage);
   } catch (error) {
     assistantMessage.content += `\n\n[Error] ${error.message}`;
@@ -426,13 +435,15 @@ function sanitizeImageUrl(value) {
     return null;
   }
 
-  if (value.startsWith('data:image/')) {
+  if (/^data:image\/(png|jpeg|jpg|gif|webp|avif);base64,/i.test(value)) {
     return value;
   }
 
   try {
     const parsed = new URL(value);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+    const isAllowedProtocol = parsed.protocol === 'https:';
+    const looksLikeImage = /\.(png|jpe?g|gif|webp|avif)(\?.*)?$/i.test(parsed.pathname);
+    if (isAllowedProtocol && looksLikeImage) {
       return value;
     }
   } catch {
@@ -598,4 +609,24 @@ async function streamAssistantResponse(conversation, assistantMessage) {
       renderMessages();
     }
   }
+}
+
+async function fetchWebSources(query) {
+  const apiKey = state.settings.searchApiKey || state.settings.apiKey;
+  if (!apiKey || !query?.trim()) {
+    return [];
+  }
+
+  const response = await fetch('/api/web-search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey, query: query.trim() }),
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json().catch(() => ({}));
+  return Array.isArray(data.results) ? data.results : [];
 }

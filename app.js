@@ -3,6 +3,7 @@ import express from 'express';
 const DEFAULT_BASE_URL = 'https://ai.hackclub.com/proxy/v1';
 const DEFAULT_MODEL = '~anthropic/claude-sonnet-latest';
 const HACK_CLUB_SEARCH_BASE_URL = 'https://search.hackclub.com';
+const WEB_SEARCH_RESULT_COUNT = 5;
 const ALLOWED_BASE_HOSTS = new Set(['ai.hackclub.com', 'openrouter.ai', 'localhost', '127.0.0.1']);
 
 function trimTrailingSlashes(value) {
@@ -51,7 +52,7 @@ async function tryWebSearch(fetchImpl, apiKey, messages) {
     return null;
   }
 
-  const params = new URLSearchParams({ q: latestText.trim(), count: '5' });
+  const params = new URLSearchParams({ q: latestText.trim(), count: String(WEB_SEARCH_RESULT_COUNT) });
   const response = await fetchImpl(`${HACK_CLUB_SEARCH_BASE_URL}/res/v1/web/search?${params}`, {
     method: 'GET',
     headers: {
@@ -71,7 +72,7 @@ async function tryWebSearch(fetchImpl, apiKey, messages) {
 
   return [
     'Live web search context from Hack Club Search (cite these URLs when relevant):',
-    ...results.slice(0, 5).map((item, index) => `${index + 1}. ${item?.title || 'Untitled'}\nURL: ${item?.url || 'N/A'}\nSummary: ${item?.description || item?.text || 'No summary provided'}`),
+    ...results.slice(0, WEB_SEARCH_RESULT_COUNT).map((item, index) => `${index + 1}. ${item?.title || 'Untitled'}\nURL: ${item?.url || 'N/A'}\nSummary: ${item?.description || item?.text || 'No summary provided'}`),
   ].join('\n\n');
 }
 
@@ -98,6 +99,43 @@ function createApp({ fetchImpl = fetch } = {}) {
       });
     } catch (error) {
       return res.status(400).json({ error: error.message || 'Invalid base URL.' });
+    }
+  });
+
+  app.post('/api/web-search', async (req, res) => {
+    try {
+      const { apiKey, query } = req.body || {};
+      if (!apiKey || !query || typeof query !== 'string' || !query.trim()) {
+        return res.status(400).json({ error: 'apiKey and query are required.' });
+      }
+
+      const params = new URLSearchParams({ q: query.trim(), count: String(WEB_SEARCH_RESULT_COUNT) });
+      const response = await fetchImpl(`${HACK_CLUB_SEARCH_BASE_URL}/res/v1/web/search?${params}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        return res.json({ results: [] });
+      }
+
+      const body = await response.json();
+      const results = body?.web?.results ?? body?.results ?? [];
+      if (!Array.isArray(results)) {
+        return res.json({ results: [] });
+      }
+
+      return res.json({
+        results: results.slice(0, WEB_SEARCH_RESULT_COUNT).map((item) => ({
+          title: item?.title || 'Untitled',
+          url: item?.url || '',
+          description: item?.description || item?.text || '',
+        })),
+      });
+    } catch {
+      return res.json({ results: [] });
     }
   });
 
