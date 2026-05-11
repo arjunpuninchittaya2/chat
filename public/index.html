@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLM Chat</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+          <h1>Chats</h1>
+          <button id="newChatBtn" class="icon-btn">＋</button>
+        </div>
+        <div id="conversationList" class="conversation-list"></div>
+        <div class="sidebar-footer">
+          <button id="settingsBtn" class="secondary">Settings</button>
+        </div>
+      </aside>
+
+      <main class="chat-main">
+        <header class="chat-header">
+          <button id="toggleSidebarBtn" class="icon-btn">☰</button>
+          <select id="modelSelect"></select>
+          <label class="checkbox-inline"><input id="webSearchToggle" type="checkbox" /> Web Search</label>
+        </header>
+
+        <section id="messages" class="messages"></section>
+
+        <form id="composer" class="composer">
+          <textarea id="promptInput" placeholder="Type a message..." required></textarea>
+          <div class="composer-row">
+            <input id="fileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.doc,.docx" />
+            <button type="submit" class="primary">Send</button>
+          </div>
+          <div id="attachmentPreview" class="attachment-preview"></div>
+        </form>
+      </main>
+    </div>
+
+    <dialog id="settingsDialog">
+      <form method="dialog" id="settingsForm">
+        <h2>Settings</h2>
+        <label>API Base URL <input id="baseUrlInput" type="url" placeholder="https://ai.hackclub.com/proxy/v1" required /></label>
+        <label>API Key <input id="apiKeyInput" type="password" placeholder="sk-..." /></label>
+        <label class="checkbox-inline"><input id="darkModeToggle" type="checkbox" /> Dark mode</label>
+        <label class="checkbox-inline"><input id="reasoningToggle" type="checkbox" /> Show reasoning blocks</label>
+        <div class="dialog-actions">
+          <button value="cancel">Cancel</button>
+          <button id="saveSettingsBtn" value="default" class="primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
