@@ -202,11 +202,15 @@ function renderMessages() {
     const article = document.createElement('article');
     article.className = `message ${message.role}`;
 
+    const messageContent = document.createElement('div');
+    messageContent.className = 'message-content';
+
     const text = document.createElement('div');
+    text.className = 'message-text';
     text.textContent = typeof message.content === 'string'
       ? message.content
       : message.content?.find?.((part) => part?.type === 'text')?.text || '';
-    article.appendChild(text);
+    messageContent.appendChild(text);
 
     const attachments = Array.isArray(message.attachments) ? message.attachments : [];
     attachments.filter((file) => file.type.startsWith('image/')).forEach((image) => {
@@ -217,7 +221,7 @@ function renderMessages() {
       const img = document.createElement('img');
       img.src = safeImageUrl;
       img.alt = image.name;
-      article.appendChild(img);
+      messageContent.appendChild(img);
     });
 
     if (Array.isArray(message.images)) {
@@ -229,7 +233,7 @@ function renderMessages() {
         const img = document.createElement('img');
         img.src = safeImageUrl;
         img.alt = 'Generated image';
-        article.appendChild(img);
+        messageContent.appendChild(img);
       });
     }
 
@@ -242,9 +246,10 @@ function renderMessages() {
       const pre = document.createElement('pre');
       pre.textContent = message.reasoning;
       reasoning.append(summary, pre);
-      article.appendChild(reasoning);
+      messageContent.appendChild(reasoning);
     }
 
+    article.appendChild(messageContent);
     elements.messages.appendChild(article);
   });
 
@@ -253,10 +258,24 @@ function renderMessages() {
 
 function renderAttachmentPreview() {
   elements.attachmentPreview.innerHTML = '';
-  pendingAttachments.forEach((file) => {
-    const chip = document.createElement('span');
+  pendingAttachments.forEach((file, index) => {
+    const chip = document.createElement('div');
     chip.className = 'attachment-chip';
-    chip.textContent = `${file.name} (${Math.ceil(file.size / BYTES_PER_KB)}KB)`;
+    
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = `${file.name} (${Math.ceil(file.size / BYTES_PER_KB)}KB)`;
+    chip.appendChild(nameSpan);
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      pendingAttachments.splice(index, 1);
+      renderAttachmentPreview();
+    });
+    chip.appendChild(closeBtn);
+    
     elements.attachmentPreview.appendChild(chip);
   });
 }
