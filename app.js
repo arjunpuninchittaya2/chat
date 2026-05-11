@@ -1,7 +1,9 @@
 import express from 'express';
 
 const DEFAULT_BASE_URL = 'https://ai.hackclub.com/proxy/v1';
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-latest';
+const DEFAULT_MODEL = '~anthropic/claude-sonnet-latest';
+const HACK_CLUB_SEARCH_BASE_URL = 'https://search.hackclub.com';
+const WEB_SEARCH_RESULT_COUNT = 5;
 const ALLOWED_BASE_HOSTS = new Set(['ai.hackclub.com', 'openrouter.ai', 'localhost', '127.0.0.1']);
 
 function trimTrailingSlashes(value) {
@@ -34,25 +36,28 @@ function normalizeBaseUrl(baseUrl) {
   return trimTrailingSlashes(parsed.toString());
 }
 
-async function tryWebSearch(fetchImpl, baseUrl, apiKey, messages) {
+function getLatestUserText(messages) {
   const latestUser = [...messages].reverse().find((msg) => msg?.role === 'user');
-  const latestText = typeof latestUser?.content === 'string'
+  return typeof latestUser?.content === 'string'
     ? latestUser.content
     : Array.isArray(latestUser?.content)
       ? latestUser.content.filter((part) => part?.type === 'text').map((part) => part.text).join('\n')
       : '';
+}
 
-  if (!latestText?.trim()) {
+async function tryWebSearch(fetchImpl, apiKey, messages) {
+  const latestText = getLatestUserText(messages);
+
+  if (!latestText?.trim() || !apiKey) {
     return null;
   }
 
-  const response = await fetchImpl(`${baseUrl}/exa/search`, {
-    method: 'POST',
+  const params = new URLSearchParams({ q: latestText.trim(), count: String(WEB_SEARCH_RESULT_COUNT) });
+  const response = await fetchImpl(`${HACK_CLUB_SEARCH_BASE_URL}/res/v1/web/search?${params}`, {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
-      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ query: latestText, numResults: 5 }),
   });
 
   if (!response.ok) {
@@ -60,14 +65,14 @@ async function tryWebSearch(fetchImpl, baseUrl, apiKey, messages) {
   }
 
   const body = await response.json();
-  const results = body?.results ?? body?.web?.results ?? [];
+  const results = body?.web?.results ?? body?.results ?? [];
   if (!Array.isArray(results) || results.length === 0) {
     return null;
   }
 
   return [
-    'Live web search context (cite these URLs when relevant):',
-    ...results.slice(0, 5).map((item, index) => `${index + 1}. ${item?.title || 'Untitled'}\nURL: ${item?.url || 'N/A'}\nSummary: ${item?.text || item?.description || 'No summary provided'}`),
+    'Live web search context from Hack Club Search (cite these URLs when relevant):',
+    ...results.slice(0, WEB_SEARCH_RESULT_COUNT).map((item, index) => `${index + 1}. ${item?.title || 'Untitled'}\nURL: ${item?.url || 'N/A'}\nSummary: ${item?.description || item?.text || 'No summary provided'}`),
   ].join('\n\n');
 }
 
@@ -97,11 +102,49 @@ function createApp({ fetchImpl = fetch } = {}) {
     }
   });
 
+  app.post('/api/web-search', async (req, res) => {
+    try {
+      const { apiKey, query } = req.body || {};
+      if (!apiKey || !query || typeof query !== 'string' || !query.trim()) {
+        return res.status(400).json({ error: 'apiKey and query are required.' });
+      }
+
+      const params = new URLSearchParams({ q: query.trim(), count: String(WEB_SEARCH_RESULT_COUNT) });
+      const response = await fetchImpl(`${HACK_CLUB_SEARCH_BASE_URL}/res/v1/web/search?${params}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        return res.json({ results: [] });
+      }
+
+      const body = await response.json();
+      const results = body?.web?.results ?? body?.results ?? [];
+      if (!Array.isArray(results)) {
+        return res.json({ results: [] });
+      }
+
+      return res.json({
+        results: results.slice(0, WEB_SEARCH_RESULT_COUNT).map((item) => ({
+          title: item?.title || 'Untitled',
+          url: item?.url || '',
+          description: item?.description || item?.text || '',
+        })),
+      });
+    } catch {
+      return res.json({ results: [] });
+    }
+  });
+
   app.post('/api/chat/stream', async (req, res) => {
     try {
       const {
         baseUrl: baseUrlInput,
         apiKey,
+        searchApiKey,
         model = DEFAULT_MODEL,
         messages = [],
         temperature,
@@ -118,7 +161,7 @@ function createApp({ fetchImpl = fetch } = {}) {
       const outgoingMessages = [...messages];
 
       if (enableWebSearch) {
-        const webContext = await tryWebSearch(fetchImpl, baseUrl, apiKey, outgoingMessages);
+        const webContext = await tryWebSearch(fetchImpl, searchApiKey || apiKey, outgoingMessages);
         if (webContext) {
           outgoingMessages.unshift({ role: 'system', content: webContext });
         }
