@@ -2,19 +2,36 @@ import express from 'express';
 
 const DEFAULT_BASE_URL = 'https://ai.hackclub.com/proxy/v1';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-latest';
+const ALLOWED_BASE_HOSTS = new Set(['ai.hackclub.com', 'openrouter.ai', 'localhost', '127.0.0.1']);
+
+function trimTrailingSlashes(value) {
+  let output = value;
+  while (output.endsWith('/')) {
+    output = output.slice(0, -1);
+  }
+  return output;
+}
+
+function isAllowedBaseUrl(parsed) {
+  if (parsed.protocol === 'https:') {
+    return ALLOWED_BASE_HOSTS.has(parsed.hostname);
+  }
+
+  return parsed.protocol === 'http:' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1');
+}
 
 function normalizeBaseUrl(baseUrl) {
   if (!baseUrl || typeof baseUrl !== 'string') {
     return DEFAULT_BASE_URL;
   }
 
-  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  const trimmed = trimTrailingSlashes(baseUrl.trim());
   const parsed = new URL(trimmed);
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('Only http/https URLs are supported.');
+  if (!isAllowedBaseUrl(parsed)) {
+    throw new Error('Only Hack Club AI or OpenRouter base URLs are allowed.');
   }
 
-  return parsed.toString().replace(/\/+$/, '');
+  return trimTrailingSlashes(parsed.toString());
 }
 
 async function tryWebSearch(fetchImpl, baseUrl, apiKey, messages) {
@@ -137,7 +154,6 @@ function createApp({ fetchImpl = fetch } = {}) {
       }
 
       res.end();
-      return undefined;
     } catch (error) {
       return res.status(500).json({ error: error.message || 'Unexpected server error.' });
     }

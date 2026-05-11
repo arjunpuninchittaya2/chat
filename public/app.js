@@ -1,6 +1,8 @@
 const STORAGE_KEY = 'chat-app-state-v1';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-latest';
 const DEFAULT_BASE_URL = 'https://ai.hackclub.com/proxy/v1';
+const MAX_CONVERSATION_TITLE_LENGTH = 40;
+const BYTES_PER_KB = 1024;
 
 const elements = {
   sidebar: document.getElementById('sidebar'),
@@ -115,7 +117,7 @@ function loadState() {
       activeConversationId: parsed.activeConversationId || null,
       settings: {
         baseUrl: parsed.settings?.baseUrl || DEFAULT_BASE_URL,
-        apiKey: parsed.settings?.apiKey || '',
+        apiKey: '',
         darkMode: parsed.settings?.darkMode ?? true,
         showReasoning: parsed.settings?.showReasoning ?? false,
       },
@@ -130,7 +132,12 @@ function loadState() {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const { apiKey, ...safeSettings } = state.settings;
+  void apiKey;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    ...state,
+    settings: safeSettings,
+  }));
 }
 
 function hydrateSettings() {
@@ -203,16 +210,24 @@ function renderMessages() {
 
     const attachments = Array.isArray(message.attachments) ? message.attachments : [];
     attachments.filter((file) => file.type.startsWith('image/')).forEach((image) => {
+      const safeImageUrl = sanitizeImageUrl(image.dataUrl);
+      if (!safeImageUrl) {
+        return;
+      }
       const img = document.createElement('img');
-      img.src = image.dataUrl;
+      img.src = safeImageUrl;
       img.alt = image.name;
       article.appendChild(img);
     });
 
     if (Array.isArray(message.images)) {
       message.images.forEach((imageDataUrl) => {
+        const safeImageUrl = sanitizeImageUrl(imageDataUrl);
+        if (!safeImageUrl) {
+          return;
+        }
         const img = document.createElement('img');
-        img.src = imageDataUrl;
+        img.src = safeImageUrl;
         img.alt = 'Generated image';
         article.appendChild(img);
       });
@@ -241,15 +256,36 @@ function renderAttachmentPreview() {
   pendingAttachments.forEach((file) => {
     const chip = document.createElement('span');
     chip.className = 'attachment-chip';
-    chip.textContent = `${file.name} (${Math.ceil(file.size / 1024)}KB)`;
+    chip.textContent = `${file.name} (${Math.ceil(file.size / BYTES_PER_KB)}KB)`;
     elements.attachmentPreview.appendChild(chip);
   });
 }
 
 function updateConversationTitle(conversation, text) {
   if (conversation.title === 'New chat' && text) {
-    conversation.title = text.slice(0, 40);
+    conversation.title = text.slice(0, MAX_CONVERSATION_TITLE_LENGTH);
   }
+}
+
+function sanitizeImageUrl(value) {
+  if (typeof value !== 'string' || !value) {
+    return null;
+  }
+
+  if (value.startsWith('data:image/')) {
+    return value;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return value;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 function buildUserContent(text, attachments) {
