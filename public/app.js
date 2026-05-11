@@ -3,6 +3,8 @@ const DEFAULT_MODEL = '~anthropic/claude-sonnet-latest';
 const DEFAULT_BASE_URL = 'https://ai.hackclub.com/proxy/v1';
 const MAX_CONVERSATION_TITLE_LENGTH = 40;
 const BYTES_PER_KB = 1024;
+const MIN_INPUT_HEIGHT = 42;
+const MAX_INPUT_HEIGHT = 180;
 
 const elements = {
   sidebar: document.getElementById('sidebar'),
@@ -190,8 +192,8 @@ function applyTheme() {
 }
 
 function autoResizeInput() {
-  elements.promptInput.style.height = '42px';
-  elements.promptInput.style.height = `${Math.min(elements.promptInput.scrollHeight, 180)}px`;
+  elements.promptInput.style.height = `${MIN_INPUT_HEIGHT}px`;
+  elements.promptInput.style.height = `${Math.min(elements.promptInput.scrollHeight, MAX_INPUT_HEIGHT)}px`;
 }
 
 function updateDraftPreview() {
