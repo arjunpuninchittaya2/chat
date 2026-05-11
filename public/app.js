@@ -272,9 +272,12 @@ function renderMessages() {
     attachments.filter((file) => file.type.startsWith('image/')).forEach((image) => {
       const safeImageUrl = sanitizeImageUrl(image.dataUrl);
       if (!safeImageUrl) return;
+      const objectUrl = toObjectImageUrl(safeImageUrl);
+      if (!objectUrl) return;
       const img = document.createElement('img');
-      img.src = safeImageUrl;
+      img.src = objectUrl;
       img.alt = image.name;
+      img.addEventListener('load', () => URL.revokeObjectURL(objectUrl), { once: true });
       messageContent.appendChild(img);
     });
 
@@ -282,9 +285,12 @@ function renderMessages() {
       message.images.forEach((imageDataUrl) => {
         const safeImageUrl = sanitizeImageUrl(imageDataUrl);
         if (!safeImageUrl) return;
+        const objectUrl = toObjectImageUrl(safeImageUrl);
+        if (!objectUrl) return;
         const img = document.createElement('img');
-        img.src = safeImageUrl;
+        img.src = objectUrl;
         img.alt = 'Generated image';
+        img.addEventListener('load', () => URL.revokeObjectURL(objectUrl), { once: true });
         messageContent.appendChild(img);
       });
     }
@@ -439,18 +445,27 @@ function sanitizeImageUrl(value) {
     return value;
   }
 
-  try {
-    const parsed = new URL(value);
-    const isAllowedProtocol = parsed.protocol === 'https:';
-    const looksLikeImage = /\.(png|jpe?g|gif|webp|avif)(\?.*)?$/i.test(parsed.pathname);
-    if (isAllowedProtocol && looksLikeImage) {
-      return value;
-    }
-  } catch {
+  return null;
+}
+
+function toObjectImageUrl(dataUrl) {
+  const match = dataUrl.match(/^data:(image\/(?:png|jpeg|jpg|gif|webp|avif));base64,(.+)$/i);
+  if (!match) {
     return null;
   }
 
-  return null;
+  const [, mime, base64] = match;
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: mime.toLowerCase() });
+    return URL.createObjectURL(blob);
+  } catch {
+    return null;
+  }
 }
 
 function buildUserContent(text, attachments) {
