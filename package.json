@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test",
-    "start": "node server.js"
+    "start": "node server.js",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "repository": {
     "type": "git",
@@ -23,6 +25,7 @@
     "express": "^5.2.1"
   },
   "devDependencies": {
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "wrangler": "^4.90.0"
   }
 }
